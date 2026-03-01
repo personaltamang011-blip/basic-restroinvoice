@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Restaurant Invoice Generator</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" href="icon-192.svg">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -411,6 +415,14 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('reset-inputs').addEventListener('click', () => resetInputs(true));
     document.getElementById('clear-table').addEventListener('click', clearTable);
     document.getElementById('print-invoice').addEventListener('click', printInvoice);
+    // register service worker for offline support
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').then(function(reg) {
+            console.log('Service worker registered.', reg);
+        }).catch(function(err) {
+            console.warn('Service worker registration failed:', err);
+        });
+    }
 });
 </script>
 </body>
