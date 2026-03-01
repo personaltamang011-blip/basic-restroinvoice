@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Invoice Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f4f4f4;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        #controls > div {
+            margin-bottom: 10px;
+        }
+        label {
+            display: inline-block;
+            width: 120px;
+        }
+        select, input[type=text], input[type=date], input[type=number] {
+            padding: 5px;
+            width: 200px;
+        }
+        #controls .buttons button {
+            margin-right: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background: #333;
+            color: #fff;
+        }
+        .action-btn {
+            margin: 0 2px;
+            padding: 2px 6px;
+        }
+        #print-invoice {
+            margin-top: 20px;
+            padding: 10px 20px;
+        }
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        #invoice-table {
+            width: 100%;
+            table-layout: fixed;
+        }
+        #invoice-table th, #invoice-table td {
+            word-wrap: break-word;
+            white-space: normal;
+        }
+        @media (max-width: 600px) {
+            #invoice-table, #invoice-table thead, #invoice-table tbody, #invoice-table th, #invoice-table td, #invoice-table tr {
+                display: block;
+            }
+            #invoice-table thead {
+                display: none;
+            }
+            #invoice-table tr {
+                margin-bottom: 12px;
+                border: 1px solid #ddd;
+                padding: 10px;
+                background: #fff;
+            }
+            #invoice-table td {
+                border: none;
+                padding: 6px 8px;
+                text-align: left;
+                display: flex;
+                justify-content: space-between;
+            }
+            #invoice-table td:before {
+                content: attr(data-label);
+                font-weight: 600;
+                margin-right: 10px;
+                color: #555;
+            }
+            .action-btn {
+                padding: 6px 8px;
+                margin: 4px 4px 0 0;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Restaurant Menu Invoice Generator</h1>
+    <div id="controls">
+        <div>
+            <label for="invoice-date">Date:</label>
+            <!-- switched to text input to allow manual entry without browser date UI -->
+            <input type="text" id="invoice-date" placeholder="YYYY-MM-DD">
+        </div>
+        <div>
+            <label for="main-category">Main Category:</label>
+            <select id="main-category"><option value="">--Select--</option></select>
+        </div>
+        <div>
+            <label for="subcat1">Subcategory 1:</label>
+            <select id="subcat1"><option value="">--Select--</option></select>
+        </div>
+        <div>
+            <label for="subcat2">Subcategory 2:</label>
+            <select id="subcat2"><option value="">--Select--</option></select>
+        </div>
+        <div>
+            <label for="item-select">Item:</label>
+            <select id="item-select"><option value="">--Select--</option></select>
+            <input type="text" id="item-manual" placeholder="Manual item" style="display:none;">
+            <button id="toggle-manual-item">Manual</button>
+        </div>
+        <div>
+            <label for="item-price">Price:</label>
+            <input type="text" id="item-price" readonly>
+            <button id="manual-price-btn">+</button>
+        </div>
+        <div>
+            <label for="item-qty">Quantity:</label>
+            <input type="number" id="item-qty" min="1" value="1">
+        </div>
+        <div class="buttons">
+            <button id="add-invoice">Add to Invoice</button>
+            <button id="reset-inputs">Reset</button>
+            <button id="clear-table">Clear</button>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+    <table id="invoice-table" class="responsive-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Item</th>
+                <th>Price</th>
+                <th>Qty</th>
+                <th>Total</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    </div>
+
+    <button id="print-invoice">Print Invoice</button>
+</div>
+
+<script>
+// global storage
+let categoryData = {};
+let invoiceEntries = [];
+let editingIndex = -1;
+
+// persist invoice entries in localStorage
+function saveEntries() {
+    try {
+        localStorage.setItem('invoiceEntries', JSON.stringify(invoiceEntries));
+    } catch (e) {
+        console.warn('could not save invoice entries', e);
+    }
+}
+function loadEntries() {
+    try {
+        const data = localStorage.getItem('invoiceEntries');
+        if (data) {
+            invoiceEntries = JSON.parse(data);
+        }
+    } catch (e) {
+        console.warn('could not load invoice entries', e);
+        invoiceEntries = [];
+    }
+}
+
+// load JSON files and populate main categories
+const jsonFiles = ['drinks.json', 'colddrinks.json'];
+
+function loadJSONFiles() {
+    const promises = jsonFiles.map(file => fetch(file).then(res => res.json()));
+    Promise.all(promises).then(datas => {
+        datas.forEach(data => {
+            if (data.mainCategory) {
+                categoryData[data.mainCategory] = data.subcategories || {};
+            }
+        });
+        populateMainCategory();
+    }).catch(err => console.error('failed loading json', err));
+}
+
+function populateMainCategory() {
+    const mainSel = document.getElementById('main-category');
+    mainSel.innerHTML = '<option value="">--Select--</option>';
+    Object.keys(categoryData).forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        mainSel.appendChild(opt);
+    });
+}
+
+function populateSub1() {
+    const main = document.getElementById('main-category').value;
+    const sub1Sel = document.getElementById('subcat1');
+    sub1Sel.innerHTML = '<option value="">--Select--</option>';
+    document.getElementById('subcat2').innerHTML = '<option value="">--Select--</option>';
+    document.getElementById('item-select').innerHTML = '<option value="">--Select--</option>';
+    document.getElementById('item-price').value = '';
+    if (main && categoryData[main]) {
+        Object.keys(categoryData[main]).forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            sub1Sel.appendChild(opt);
+        });
+    }
+}
+
+function populateSub2() {
+    const main = document.getElementById('main-category').value;
+    const sub1 = document.getElementById('subcat1').value;
+    const sub2Sel = document.getElementById('subcat2');
+    sub2Sel.innerHTML = '<option value="">--Select--</option>';
+    document.getElementById('item-select').innerHTML = '<option value="">--Select--</option>';
+    document.getElementById('item-price').value = '';
+    if (main && sub1 && categoryData[main] && categoryData[main][sub1]) {
+        Object.keys(categoryData[main][sub1]).forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            sub2Sel.appendChild(opt);
+        });
+    }
+}
+
+function populateItems() {
+    const main = document.getElementById('main-category').value;
+    const sub1 = document.getElementById('subcat1').value;
+    const sub2 = document.getElementById('subcat2').value;
+    const itemSel = document.getElementById('item-select');
+    itemSel.innerHTML = '<option value="">--Select--</option>';
+    document.getElementById('item-price').value = '';
+    if (main && sub1 && sub2 && categoryData[main] && categoryData[main][sub1] && categoryData[main][sub1][sub2]) {
+        const arr = categoryData[main][sub1][sub2];
+        arr.forEach(it => {
+            const opt = document.createElement('option');
+            opt.value = it.name;
+            opt.dataset.price = it.price;
+            opt.textContent = it.name;
+            itemSel.appendChild(opt);
+        });
+    }
+}
+
+function setPriceFromItem() {
+    const sel = document.getElementById('item-select');
+    const priceField = document.getElementById('item-price');
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && opt.dataset && opt.dataset.price) {
+        priceField.value = opt.dataset.price;
+    } else {
+        priceField.value = '';
+    }
+}
+
+function toggleManualItem() {
+    const manual = document.getElementById('item-manual');
+    const sel = document.getElementById('item-select');
+    if (manual.style.display === 'none') {
+        manual.style.display = '';
+        sel.style.display = 'none';
+        sel.value = '';
+        document.getElementById('item-price').value = '';
+    } else {
+        manual.style.display = 'none';
+        sel.style.display = '';
+        manual.value = '';
+    }
+}
+
+function manualPrice() {
+    const p = prompt('Enter manual price');
+    if (p !== null && p !== '') {
+        document.getElementById('item-price').value = p;
+    }
+}
+
+// reset form fields and optionally clear the invoice table
+function resetInputs(clearTableEntries = true) {
+    document.getElementById('invoice-date').value = '';
+    document.getElementById('main-category').value = '';
+    document.getElementById('subcat1').innerHTML = '<option value="">--Select--</option>';
+    document.getElementById('subcat2').innerHTML = '<option value="">--Select--</option>';
+    document.getElementById('item-select').innerHTML = '<option value="">--Select--</option>';
+    document.getElementById('item-manual').value = '';
+    document.getElementById('item-price').value = '';
+    document.getElementById('item-qty').value = 1;
+    editingIndex = -1;
+    document.getElementById('add-invoice').textContent = 'Add to Invoice';
+    if (clearTableEntries) {
+        clearTable();
+    }
+}
+
+function clearTable() {
+    invoiceEntries = [];
+    saveEntries();
+    drawTable();
+}
+
+function drawTable() {
+    const tbody = document.querySelector('#invoice-table tbody');
+    tbody.innerHTML = '';
+    invoiceEntries.forEach((entry, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td data-label="Date">${entry.date}</td>
+            <td data-label="Item">${entry.item}</td>
+            <td data-label="Price">${entry.price}</td>
+            <td data-label="Qty">${entry.qty}</td>
+            <td data-label="Total">${(entry.price * entry.qty).toFixed(2)}</td>
+            <td data-label="Actions">
+                <button class="action-btn" onclick="editEntry(${idx})">Edit</button>
+                <button class="action-btn" onclick="deleteEntry(${idx})">Delete</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function addInvoice() {
+    const date = document.getElementById('invoice-date').value;
+    const manualItemInput = document.getElementById('item-manual');
+    const itemSel = document.getElementById('item-select');
+    const itemName = manualItemInput.style.display !== 'none' ? manualItemInput.value : itemSel.value;
+    const price = parseFloat(document.getElementById('item-price').value) || 0;
+    const qty = parseInt(document.getElementById('item-qty').value) || 0;
+    if (!date || !itemName || !price || !qty) {
+        alert('Please fill all fields with valid values');
+        return;
+    }
+    const entry = { date, item: itemName, price, qty };
+    if (editingIndex >= 0) {
+        invoiceEntries[editingIndex] = entry;
+        editingIndex = -1;
+        document.getElementById('add-invoice').textContent = 'Add to Invoice';
+    } else {
+        invoiceEntries.push(entry);
+    }
+    saveEntries();
+    drawTable();
+    // keep form values intact; user can continue entering similar items
+    // resetInputs() is only run when user explicitly clicks the reset button
+}
+
+function editEntry(idx) {
+    const entry = invoiceEntries[idx];
+    document.getElementById('invoice-date').value = entry.date;
+    // for simplicity put in manual item mode
+    document.getElementById('item-manual').style.display = '';
+    document.getElementById('item-manual').value = entry.item;
+    document.getElementById('item-select').style.display = 'none';
+    document.getElementById('item-price').value = entry.price;
+    document.getElementById('item-qty').value = entry.qty;
+    editingIndex = idx;
+    document.getElementById('add-invoice').textContent = 'Update Invoice';
+}
+
+function deleteEntry(idx) {
+    invoiceEntries.splice(idx, 1);
+    saveEntries();
+    drawTable();
+}
+
+function printInvoice() {
+    window.print();
+}
+
+// event hooks
+window.addEventListener('DOMContentLoaded', () => {
+    loadJSONFiles();
+    loadEntries();
+    if (invoiceEntries.length) {
+        drawTable();
+    }
+    document.getElementById('main-category').addEventListener('change', populateSub1);
+    document.getElementById('subcat1').addEventListener('change', populateSub2);
+    document.getElementById('subcat2').addEventListener('change', populateItems);
+    document.getElementById('item-select').addEventListener('change', setPriceFromItem);
+    document.getElementById('toggle-manual-item').addEventListener('click', toggleManualItem);
+    document.getElementById('manual-price-btn').addEventListener('click', manualPrice);
+    document.getElementById('add-invoice').addEventListener('click', addInvoice);
+    // reset button clears form and invoice entries
+    document.getElementById('reset-inputs').addEventListener('click', () => resetInputs(true));
+    document.getElementById('clear-table').addEventListener('click', clearTable);
+    document.getElementById('print-invoice').addEventListener('click', printInvoice);
+});
+</script>
+</body>
+</html>

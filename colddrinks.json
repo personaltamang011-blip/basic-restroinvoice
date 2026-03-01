@@ -1,0 +1,20 @@
+{
+  "mainCategory": "Cold Drinks",
+  "subcategories": {
+    "Smoothies": {
+      "Fruit": [
+        { "name": "Strawberry Smoothie", "price": 3.5 },
+        { "name": "Mango Smoothie", "price": 3.5 }
+      ],
+      "Green": [
+        { "name": "Spinach Smoothie", "price": 4.0 }
+      ]
+    },
+    "Ice Cream": {
+      "Cups": [
+        { "name": "Vanilla", "price": 2.0 },
+        { "name": "Chocolate", "price": 2.0 }
+      ]
+    }
+  }
+}
